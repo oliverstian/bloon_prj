@@ -1,0 +1,103 @@
+C51 COMPILER V9.51   MAIN                                                                  06/07/2018 15:04:24 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN ..\object\main.obj
+COMPILER INVOKED BY: E:\StudySoftWareInstall\keil4\C51\BIN\C51.EXE ..\user_files\main.c BROWSE INCDIR(..\user_files) DEB
+                    -UG OBJECTEXTEND PRINT(.\main.lst) TABS(2) OBJECT(..\object\main.obj)
+
+line level    source
+
+   1          #include"Stc12c5a.h"
+   2          #include"Global.h"
+   3          #include"intrins.h"
+   4          #include"IO.h"
+   5          #include"Timer.h"
+   6          #include"CommuTask.h"
+   7          #include"EEProm.h"
+   8          #include <string.h>
+   9          #include"MC20.h"
+  10          #include"DS18B20.h"
+  11          
+  12          void TaskInit()
+  13          {
+  14   1        CreatTask(USER_TASK,20);        //100ms
+  15   1        
+  16   1          CreatTask(EXTER_COM_TASK,40);   //200ms
+  17   1      
+  18   1        CreatTask(MC20_TASK,36);        //200ms  //compasate 4*5 = 20ms
+  19   1      }
+  20          
+  21          void InitSys()
+  22          {
+  23   1        InterruptControl(EA_I|TIMER0_I|TIMER1_I|UART1_I|UART2_I,Enable);
+  24   1        
+  25   1          InitTimer();
+  26   1        
+  27   1        UartInit();
+  28   1      
+  29   1        IOInit();
+  30   1      
+  31   1        MC20Start();
+  32   1        
+  33   1        PowerOnReadEE();
+  34   1        
+  35   1        TaskInit();
+  36   1      
+  37   1        MC20Init();
+  38   1      
+  39   1        DS_Init();
+  40   1      
+  41   1        GlabalTimeCnt = 0;
+  42   1      }
+  43          
+  44          void main()
+  45          {
+  46   1        InitSys();
+  47   1      
+  48   1        while(1)
+  49   1        {
+  50   2          UserTasks(USER_TASK);
+  51   2      
+  52   2              MC20Task(MC20_TASK);
+  53   2      
+  54   2          ExterComTask(EXTER_COM_TASK);
+C51 COMPILER V9.51   MAIN                                                                  06/07/2018 15:04:24 PAGE 2   
+
+  55   2        }
+  56   1      }
+  57          
+  58          
+  59          
+  60          
+  61          
+  62          
+  63          
+  64          
+  65          
+  66          
+  67          
+  68          
+  69          
+  70          
+  71          
+  72          
+  73          
+  74          
+  75          
+  76          
+  77          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     91    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

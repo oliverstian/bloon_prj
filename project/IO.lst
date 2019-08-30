@@ -1,0 +1,246 @@
+C51 COMPILER V9.51   IO                                                                    06/07/2018 15:04:24 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE IO
+OBJECT MODULE PLACED IN ..\object\IO.obj
+COMPILER INVOKED BY: E:\StudySoftWareInstall\keil4\C51\BIN\C51.EXE ..\user_files\IO.c BROWSE INCDIR(..\user_files) DEBUG
+                    - OBJECTEXTEND PRINT(.\IO.lst) TABS(2) OBJECT(..\object\IO.obj)
+
+line level    source
+
+   1          #include"Stc12c5a.h"
+   2          #include"Global.h"
+   3          #include"IO.h"
+   4          
+   5          #define PxM0_SET     0x01
+   6          #define PxM1_SET     0x10
+   7          
+   8          void Config_IO(INT8U IO,INT8U PIN,INT8U Mode)
+   9          {
+  10   1        INT8U PxM0_Temp=0;
+  11   1        INT8U PxM1_Temp=0;
+  12   1      
+  13   1        if((IO>MAX_IO_NUM)||(Mode>MAX_MODE_NUM))
+  14   1        {
+  15   2          return;
+  16   2        }
+  17   1        
+  18   1        if((Mode&PxM0_SET) == PxM0_SET)
+  19   1        {
+  20   2          PxM0_Temp |= PIN;
+  21   2        }
+  22   1        
+  23   1        if((Mode&PxM1_SET) == PxM1_SET)
+  24   1        {
+  25   2          PxM1_Temp |= PIN;
+  26   2        }
+  27   1      
+  28   1        if((IO&IO_0) == IO_0)
+  29   1        {
+  30   2          P0M0 &= ~PIN;
+  31   2          P0M0 |= PxM0_Temp;
+  32   2          P0M1 &= ~PIN;
+  33   2          P0M1 |= PxM1_Temp;
+  34   2        }
+  35   1          if((IO&IO_1) == IO_1)
+  36   1          {
+  37   2          P1M0 &= ~PIN;
+  38   2          P1M0 |= PxM0_Temp;
+  39   2          P1M1 &= ~PIN;
+  40   2          P1M1 |= PxM1_Temp;
+  41   2        }
+  42   1        if((IO&IO_2) == IO_2)
+  43   1          {
+  44   2          P2M0 &= ~PIN;
+  45   2          P2M0 |= PxM0_Temp;
+  46   2          P2M1 &= ~PIN;
+  47   2          P2M1 |= PxM1_Temp;
+  48   2        }
+  49   1        if((IO&IO_3) == IO_3)
+  50   1        {
+  51   2          P3M0 &= ~PIN;
+  52   2          P3M0 |= PxM0_Temp;
+  53   2          P3M1 &= ~PIN;
+  54   2          P3M1 |= PxM1_Temp;
+C51 COMPILER V9.51   IO                                                                    06/07/2018 15:04:24 PAGE 2   
+
+  55   2        }
+  56   1          if((IO&IO_4) == IO_4)
+  57   1          {
+  58   2          P4M0 &= ~PIN;
+  59   2          P4M0 |= PxM0_Temp;
+  60   2          P4M1 &= ~PIN;
+  61   2          P4M1 |= PxM1_Temp;
+  62   2        }
+  63   1        if((IO&IO_5) == IO_5)
+  64   1        {
+  65   2          P5M0 &= ~PIN;
+  66   2          P5M0 |= PxM0_Temp;
+  67   2          P5M1 &= ~PIN;
+  68   2          P5M1 |= PxM1_Temp;
+  69   2        }
+  70   1      }
+  71          
+  72          void Set_IO(INT8U Port,INT8U Pin_Num)
+  73          {
+  74   1        if(Port >MAX_IO_NUM)
+  75   1        {
+  76   2          return;
+  77   2        }
+  78   1      
+  79   1        if((Port&IO_0) == IO_0)
+  80   1        {
+  81   2          P0 |= Pin_Num;
+  82   2        }
+  83   1        if((Port&IO_1) == IO_1)
+  84   1        {
+  85   2          P1 |= Pin_Num;
+  86   2        }
+  87   1        if((Port&IO_2) == IO_2)
+  88   1        {
+  89   2          P2 |= Pin_Num;
+  90   2        }
+  91   1        if((Port&IO_3) == IO_3)
+  92   1        {
+  93   2          P3 |= Pin_Num;
+  94   2        }
+  95   1        if((Port&IO_4) == IO_4)
+  96   1        {
+  97   2          P4 |= Pin_Num;
+  98   2        }
+  99   1        if((Port&IO_5) == IO_5)
+ 100   1        {
+ 101   2          P5 |= Pin_Num;
+ 102   2        }
+ 103   1      }
+ 104          
+ 105          void Reset_IO(INT8U Port,INT8U Pin_Num)
+ 106          {
+ 107   1        if(Port >MAX_IO_NUM)
+ 108   1        {
+ 109   2          return;
+ 110   2        }
+ 111   1        
+ 112   1        if((Port&IO_0) == IO_0)
+ 113   1        {
+ 114   2          P0 &= ~Pin_Num;
+ 115   2        }
+ 116   1        if((Port&IO_1) == IO_1)
+C51 COMPILER V9.51   IO                                                                    06/07/2018 15:04:24 PAGE 3   
+
+ 117   1        {
+ 118   2          P1 &= ~Pin_Num;
+ 119   2        }
+ 120   1        if((Port&IO_2) == IO_2)
+ 121   1        {
+ 122   2          P2 &= ~Pin_Num;
+ 123   2        }
+ 124   1        if((Port&IO_3) == IO_3)
+ 125   1        {
+ 126   2          P3 &= ~Pin_Num;
+ 127   2        }
+ 128   1        if((Port&IO_4) == IO_4)
+ 129   1        {
+ 130   2          P4 &= ~Pin_Num;
+ 131   2        }
+ 132   1        if((Port&IO_5) == IO_5)
+ 133   1        {
+ 134   2          P5 &= ~Pin_Num;
+ 135   2        }
+ 136   1      }
+ 137          
+ 138          INT8U Read_IO(INT8U Port,INT8U Pin_Num)
+ 139          {
+ 140   1        INT8U Temp=0;
+ 141   1        
+ 142   1        switch(Port)
+ 143   1        {
+ 144   2          case IO_0:Temp = P0&Pin_Num;break;
+ 145   2          case IO_1:Temp = P1&Pin_Num;break;
+ 146   2          case IO_2:Temp = P2&Pin_Num;break;
+ 147   2          case IO_3:Temp = P3&Pin_Num;break;
+ 148   2          case IO_4:Temp = P4&Pin_Num;break;
+ 149   2          case IO_5:Temp = P5&Pin_Num;break;
+ 150   2        }
+ 151   1        
+ 152   1          if(Temp == 0)
+ 153   1          {
+ 154   2          return RESET;
+ 155   2        }
+ 156   1        else
+ 157   1        {
+ 158   2          return SET;
+ 159   2        }
+ 160   1      }
+ 161          
+ 162          void IOInit()
+ 163          {
+ 164   1        Config_IO(IO_1,PIN_0,OPEN_DRAIN_MODE);
+ 165   1        Set_IO(IO_1,PIN_0);
+ 166   1        
+ 167   1        Config_IO(POWE_KEY_PORT,POWE_KEY_PIN,PUSH_PULL_MODE);
+ 168   1        Reset_IO(POWE_KEY_PORT,POWE_KEY_PIN);
+ 169   1      
+ 170   1        Config_IO(MCU_LED_PORT,MCU_LED_PIN,PUSH_PULL_MODE);
+ 171   1        Reset_IO(MCU_LED_PORT,MCU_LED_PIN);
+ 172   1      
+ 173   1        Config_IO(POWE_EN_PORT,POWE_EN_PIN,PUSH_PULL_MODE);
+ 174   1        Reset_IO(POWE_EN_PORT,POWE_EN_PIN);
+ 175   1      
+ 176   1        Config_IO(MOTER_PORT,MOTER_PIN,PUSH_PULL_MODE);
+ 177   1        Reset_IO(MOTER_PORT,MOTER_PIN);
+ 178   1      
+C51 COMPILER V9.51   IO                                                                    06/07/2018 15:04:24 PAGE 4   
+
+ 179   1          P4SW |= 0x40;  //set P46 to be common IO port,this pin should be changed later
+ 180   1        Config_IO(MC_PW_CONTR_PORT,MC_PW_CONTR_PIN,PUSH_PULL_MODE);
+ 181   1      
+ 182   1        Config_IO(TEMPER_CTR_PORT,TEMPER_CTR_PIN,PUSH_PULL_MODE);
+ 183   1        Reset_IO(TEMPER_CTR_PORT,TEMPER_CTR_PIN);
+ 184   1      }
+ 185          
+ 186          
+ 187          
+ 188          
+ 189          
+ 190          
+ 191          
+ 192          
+ 193          
+ 194          
+ 195          
+ 196          
+ 197          
+ 198          
+ 199          
+ 200          
+ 201          
+ 202          
+ 203          
+ 204          
+ 205          
+ 206          
+ 207          
+ 208          
+ 209          
+ 210          
+ 211          
+ 212          
+ 213          
+ 214          
+ 215          
+ 216          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    388    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

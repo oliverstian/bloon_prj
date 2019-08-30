@@ -1,0 +1,1167 @@
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE MC20
+OBJECT MODULE PLACED IN ..\object\MC20.obj
+COMPILER INVOKED BY: E:\StudySoftWareInstall\keil4\C51\BIN\C51.EXE ..\user_files\MC20.c BROWSE INCDIR(..\user_files) DEB
+                    -UG OBJECTEXTEND PRINT(.\MC20.lst) TABS(2) OBJECT(..\object\MC20.obj)
+
+line level    source
+
+   1          #include"Stc12c5a.h"
+   2          #include"Global.h"
+   3          #include"CommuTask.h"
+   4          #include <string.h>
+   5          #include"IO.h"
+   6          #include"MC20.h"
+   7          #include"EEProm.h"
+   8          
+   9          #define USUAL_WAIT      10
+  10          #define MESSAGE_WAIT    400  //2s,when send 0x0a to start sending message,it need much time to response ok
+  11          
+  12          #define START_DELAY     2400 //12s
+  13          
+  14          #define WAIT_RESPONES_T  6   //total 5x10x3x5=750ms
+  15          #define RETRY_TIME       2
+  16          
+  17          #define NO_MSG       0
+  18          #define RECIEV_MSG   1
+  19          #define READ_FAIL    2
+  20          
+  21          #define REQUIR_AGAIN 0
+  22          #define NEED_SEND    1
+  23          #define SEND_FINISH  2
+  24          
+  25          #define LATITUDE     3
+  26          #define LATI_DIR     4
+  27          #define LONGTITU     5
+  28          #define LONG_DIR     6
+  29          #define FIX_STAT     7
+  30          #define PRECISION    9
+  31          #define ATITUDE      10
+  32          
+  33          #define DATAx100     100
+  34          
+  35          #define STA_UP      0
+  36          #define STA_DOWN    1
+  37          #define STA_PARA    2
+  38          #define STA_UNKNOW  3
+  39          
+  40          #define UNDER_LEVER_1  0x01   //150M
+  41          #define UNDER_LEVER_2  0x02   //500M
+  42          #define UNDER_LEVER_3  0x04   //100M
+  43          #define UNDER_LEVER_4  0x08
+  44          #define SEND_MSG_FLAG  0x10
+  45          
+  46          #define HIGH_LEVER_1  100
+  47          #define HIGH_LEVER_2  600
+  48          #define HIGH_LEVER_3  1200
+  49          #define HIGH_LEVER_4  1600
+  50          #define HIGH_LEVER_5  500
+  51          
+  52          #define UP_CNT            3
+  53          #define LOCAT_CNT         75
+  54          #define GET_DT_TIME       5   //1s
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 2   
+
+  55          #define GO_BACK_CHK_TIME  20  //4s
+  56          #define CONTINOUS_TIME    (GET_DT_TIME*5)  //success 5 times
+  57          
+  58          #define CNT_TIME        2
+  59          
+  60          #define MSG_BUFF_LEN  20
+  61          
+  62          xdata INT8U tReadMsg[13]="AT+CMGR=     ";
+  63          xdata INT8U tbMsgPhone[26]="AT+CMGS=\"           \"\r\n";
+  64          xdata INT8U tbSendMsgBuff[MSG_BUFF_LEN] = "                  ";  //initial value
+  65          xdata INT8U tbNumChk[4];
+  66          
+  67          code INT8U tStartSend[2]={0x1A,0x00};
+  68          
+  69          code INT8U CmdTable[3][20]=
+  70          {
+  71            "get location",
+  72            "get backup",
+  73            "motor",
+  74          };
+  75            
+  76          code INT8U SendTable[5][MSG_BUFF_LEN]=
+  77          {
+  78            "Invalid command!",
+  79            "Locate fail!",
+  80            "GPS fail!",
+  81            "start ok!",
+  82            "start fail!",
+  83          };
+  84            
+  85          xdata sGPSDtManage sGPSData;
+  86          xdata sGPSDtBkUp sGPSDtBackUp;
+  87          xdata sMsgStr sMsgManage;
+  88          
+  89          static INT8U AtiSymbol=0;
+  90          static INT8U BalonStaRecor=STA_UNKNOW;  
+  91          static INT8U BalonAlreadyUp=0;
+  92          
+  93          
+  94          //*******************************************************************************
+  95          void ClrInterRxBuf()
+  96          {
+  97   1        memset(InterRxBuff, 0, INTER_RX_MAX_SIZE);
+  98   1        sInterRx.bRxCnt=0;
+  99   1        sInterRx.bRxStatus = BUFF_EMPTY;
+ 100   1        sInterRx.bRxTimeCnt=0;
+ 101   1      }
+ 102          
+ 103          INT8U MC20SendCmd(INT8U *pSendBuff,INT8U *pResponseStr,INT16U bWaitTime)
+ 104          {
+ 105   1        INT8U bSendLenCnt=0;
+ 106   1        INT8U i,m,n;
+ 107   1        
+ 108   1        for(i=0;i<INTER_TX_MAX_SIZE;i++)
+ 109   1        {
+ 110   2          if(*(pSendBuff+bSendLenCnt) !='\0')
+ 111   2          {
+ 112   3            bSendLenCnt++;
+ 113   3          }
+ 114   2          else
+ 115   2          {
+ 116   3            break;
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 3   
+
+ 117   3          }
+ 118   2        }
+ 119   1        
+ 120   1        memset(BackUpRxBuf,0,INTER_RX_MAX_SIZE);
+ 121   1        
+ 122   1        for(i=0;i<RETRY_TIME;i++)
+ 123   1        {
+ 124   2          ClrInterRxBuf();
+ 125   2          while(UartSendData(INTER_TX,pSendBuff,bSendLenCnt) == TX_BUSY);
+ 126   2       
+ 127   2          for(m=0;m<WAIT_RESPONES_T;m++)
+ 128   2          {
+ 129   3            delayN_Tick(bWaitTime);
+ 130   3      
+ 131   3            #if 0
+                      if(m<2)
+                      {
+                      while(UartSendData(EXTER_TX,InterRxBuff,100) == TX_BUSY);
+                      delayN_Tick(20);
+                      }
+                          #endif
+ 138   3            
+ 139   3            if (strstr(InterRxBuff, pResponseStr) != NULL)
+ 140   3            {
+ 141   4              for(n=0;n<INTER_RX_MAX_SIZE;n++)
+ 142   4              {
+ 143   5                BackUpRxBuf[n] = InterRxBuff[n];
+ 144   5              }
+ 145   4              
+ 146   4              ClrInterRxBuf();
+ 147   4              return SUCCESS;
+ 148   4            }
+ 149   3          }
+ 150   2        }
+ 151   1      
+ 152   1        return FAIL;
+ 153   1      }
+ 154          
+ 155          void MC20Start()
+ 156          {
+ 157   1        INT8U i;
+ 158   1        INT8U SuccCnt=0;
+ 159   1      
+ 160   1        MC20PowerCtr(SHUT_DOWN);  //in case MCU reset unexpectly,in this case,mc20 should restart
+ 161   1      
+ 162   1        delayN_Tick(400);  //2s
+ 163   1      
+ 164   1        MC20PowerCtr(START);
+ 165   1      
+ 166   1        delayN_Tick(200);  //1s
+ 167   1        
+ 168   1        Set_IO(POWE_KEY_PORT,POWE_KEY_PIN);  //Pull down POW_KEY PIN
+ 169   1        
+ 170   1        delayN_Tick(START_DELAY);  //12s
+ 171   1      
+ 172   1        for(i=0;i<4;i++)
+ 173   1        {
+ 174   2          if(MC20SendCmd("AT\r\n","OK\r\n",USUAL_WAIT) == SUCCESS)  //check if AT cmd is executived
+ 175   2          {
+ 176   3            SuccCnt++;
+ 177   3          }
+ 178   2        }
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 4   
+
+ 179   1        
+ 180   1        Reset_IO(POWE_KEY_PORT,POWE_KEY_PIN);  
+ 181   1        
+ 182   1          if(SuccCnt<=2)
+ 183   1          {
+ 184   2          SetFault(MC20_FAITAL_FAULT);  
+ 185   2        }
+ 186   1      }
+ 187          
+ 188          void BasicInfoChk()
+ 189          {
+ 190   1        if(MC20SendCmd("AT+CPIN?\r\n","READY",USUAL_WAIT) == SUCCESS)
+ 191   1        {
+ 192   2          if(MC20SendCmd("AT+CREG?\r\n", "1",USUAL_WAIT) == SUCCESS)
+ 193   2          {
+ 194   3            ClrFault(MC20_BASE_FAULT);
+ 195   3          }
+ 196   2          else if(MC20SendCmd("AT+CREG?\r\n", "5",USUAL_WAIT) == SUCCESS)
+ 197   2          {
+ 198   3            ClrFault(MC20_BASE_FAULT);
+ 199   3          }
+ 200   2              else
+ 201   2              {
+ 202   3            SetFault(MC20_BASE_FAULT);
+ 203   3          }
+ 204   2        }
+ 205   1        else
+ 206   1        {
+ 207   2          SetFault(MC20_BASE_FAULT);
+ 208   2        }
+ 209   1      }
+ 210          
+ 211          void MC20InitBaud()
+ 212          {
+ 213   1        if(MC20SendCmd("AT+IPR=9600\r\n","OK\r\n",USUAL_WAIT) == SUCCESS)  //set baud 
+ 214   1        {
+ 215   2          MC20SendCmd("AT&W\r\n","OK\r\n",USUAL_WAIT);  //preserve setting
+ 216   2          ClrFault(MC20_BAUD_FAULT);
+ 217   2        }
+ 218   1        else
+ 219   1        {
+ 220   2          SetFault(MC20_BAUD_FAULT);
+ 221   2        }
+ 222   1      }
+ 223          
+ 224          void MC20StartGNSS()
+ 225          {
+ 226   1        if(MC20SendCmd("AT+QGNSSC?\r\n","+QGNSSC: 0",USUAL_WAIT) == SUCCESS)  //if GNSS was not started
+ 227   1        {
+ 228   2          if(MC20SendCmd("AT+QGNSSC=1\r\n","OK\r\n",USUAL_WAIT) != SUCCESS) //start GNSS
+ 229   2          {
+ 230   3            SetFault(MC20_FAITAL_FAULT);
+ 231   3          }
+ 232   2        }
+ 233   1      }
+ 234          
+ 235          void MC20InitMessage()
+ 236          {
+ 237   1        sMsgManage.DealStatus = SEND_FINISH;
+ 238   1        sMsgManage.pMsgContent = SendTable[0];
+ 239   1        sMsgManage.tbPhoneNum = sDeviceInfoEE.tbPhoneNum;
+ 240   1        memcpy(sMsgManage.tbPhoneBuff,sDeviceInfoEE.tbPhoneNum,PHONE_SIZE);
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 5   
+
+ 241   1        memset(sMsgManage.tbCommand,'0',MSGCMD_SEZE);
+ 242   1        
+ 243   1        ClrFault(MC20_MSG_FAULT);
+ 244   1        
+ 245   1        if(MC20SendCmd("AT+CSCS=\"GSM\"\r\n","OK\r\n",USUAL_WAIT) != SUCCESS)  //set terminal equipment input cha
+             -r group is "GSM"
+ 246   1        {
+ 247   2          SetFault(MC20_MSG_FAULT);
+ 248   2        }
+ 249   1        if(MC20SendCmd("AT+CNMI=2,1\r\n","OK\r\n",USUAL_WAIT) != SUCCESS)  //message firstly store in SIM,then gi
+             -ve a signal
+ 250   1        {
+ 251   2          SetFault(MC20_MSG_FAULT);     
+ 252   2        }
+ 253   1        if(MC20SendCmd("AT+CMGF=1\r\n","OK\r\n",USUAL_WAIT) != SUCCESS) //message tex mode,not PDU mode
+ 254   1        {
+ 255   2          SetFault(MC20_MSG_FAULT);     
+ 256   2        }
+ 257   1        if(MC20SendCmd("AT+CSDH=0\r\n","OK\r\n",USUAL_WAIT) != SUCCESS) //text parameter mode display
+ 258   1        {
+ 259   2          SetFault(MC20_MSG_FAULT);     
+ 260   2        }
+ 261   1      #if 0
+                if(MC20SendCmd("AT+CPMS=\"SM\",\"SM\",\"SM\"\r\n","OK\r\n",USUAL_WAIT) != SUCCESS)  //select message stor
+             -age memory(in SIM card)
+                {
+                  SetFault(MC20_MSG_FAULT);
+                }
+              #endif
+ 267   1      }
+ 268          
+ 269          INT8U ChkIfMsgIsFull()
+ 270          {
+ 271   1        INT8U i;
+ 272   1        static INT8U TimeCnt30s=0;
+ 273   1      
+ 274   1        if(TimeCnt30s<150)
+ 275   1        {
+ 276   2          TimeCnt30s++;
+ 277   2          return FAIL;
+ 278   2        }
+ 279   1        else
+ 280   1        {
+ 281   2          TimeCnt30s = 0;
+ 282   2        }
+ 283   1      
+ 284   1        if(MC20SendCmd("AT+CPMS?\r\n","OK\r\n",USUAL_WAIT) == SUCCESS)
+ 285   1        {
+ 286   2          for(i=0;i<INTER_RX_MAX_SIZE;i++)
+ 287   2            {
+ 288   3            if((BackUpRxBuf[i]==0x0d)&&(BackUpRxBuf[i+1]==0x0a))
+ 289   3            {
+ 290   4              if((BackUpRxBuf[i+15] != ',')&&(((BackUpRxBuf[i+14] == 0x34)&&(BackUpRxBuf[i+15] > 0x35)) ||(BackUpRxB
+             -uf[i+14] == 0x35))) //if message num is >45
+ 291   4              {
+ 292   5                if(MC20SendCmd("AT+CMGD=1,4\r\n","OK\r\n",USUAL_WAIT) == SUCCESS)  //delete all message
+ 293   5                {
+ 294   6                  return SUCCESS;
+ 295   6                }
+ 296   5                else
+ 297   5                {
+ 298   6                  return FAIL;
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 6   
+
+ 299   6                }
+ 300   5              }
+ 301   4              
+ 302   4              return SUCCESS;
+ 303   4            }
+ 304   3            }
+ 305   2        }
+ 306   1        
+ 307   1        SetFault(MC20_MSG_FAULT);
+ 308   1        return FAIL;
+ 309   1      }
+ 310          
+ 311          INT8U SendMessage(INT8U *bContent,INT8U *Phone)
+ 312          {
+ 313   1        INT8U i;
+ 314   1        
+ 315   1        for(i=0;i<3;i++)
+ 316   1        {
+ 317   2          if(MC20SendCmd(Phone,">",USUAL_WAIT) == SUCCESS)     //wait to edit message
+ 318   2          {
+ 319   3            if(MC20SendCmd(bContent,bContent,MESSAGE_WAIT) == SUCCESS)
+ 320   3            {
+ 321   4              if(MC20SendCmd(tStartSend,"OK\r\n",MESSAGE_WAIT) == SUCCESS)  //send 0x1A to start sending
+ 322   4              {
+ 323   5                ClrFault(MC20_MSG_FAULT);
+ 324   5                return SUCCESS;
+ 325   5              }
+ 326   4            }
+ 327   3          }
+ 328   2        }
+ 329   1        
+ 330   1        SetFault(MC20_MSG_FAULT);
+ 331   1        
+ 332   1        return FAIL;
+ 333   1      }
+ 334          
+ 335          INT8U ReadMessage()
+ 336          {
+ 337   1        INT8U m,n=0;
+ 338   1        INT8U bPositionCnt=0;
+ 339   1      
+ 340   1        if(sInterRx.bRxStatus != RX_FINISH)
+ 341   1        {
+ 342   2          return NO_MSG;
+ 343   2        }
+ 344   1      
+ 345   1        if((InterRxBuff[2]=='+')&&(InterRxBuff[3]=='C')&&(InterRxBuff[4]=='M')&&(InterRxBuff[5]=='T')&&(InterRxBu
+             -ff[6]=='I'))
+ 346   1        {
+ 347   2          if((InterRxBuff[15] == 0x0d) &&(InterRxBuff[16] == 0x0a))
+ 348   2          {
+ 349   3            tReadMsg[8] = InterRxBuff[14];
+ 350   3            tReadMsg[9] = '\r';
+ 351   3            tReadMsg[10] = '\n';
+ 352   3            tReadMsg[11] = '\0';
+ 353   3          }
+ 354   2          else if((InterRxBuff[16] == 0x0d) &&(InterRxBuff[17] == 0x0a))
+ 355   2          {
+ 356   3            tReadMsg[8] = InterRxBuff[14];
+ 357   3            tReadMsg[9] = InterRxBuff[15];
+ 358   3            tReadMsg[10] = '\r';
+ 359   3            tReadMsg[11] = '\n';
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 7   
+
+ 360   3            tReadMsg[12] = '\0';
+ 361   3          }
+ 362   2          
+ 363   2          if(MC20SendCmd(tReadMsg,"OK\r\n",USUAL_WAIT) == SUCCESS)
+ 364   2          {
+ 365   3            memset(sMsgManage.tbCommand,0,MSGCMD_SEZE);
+ 366   3            memset(sMsgManage.tbPhoneBuff,0,PHONE_SIZE);
+ 367   3            
+ 368   3            for(m=0;m<(INTER_RX_MAX_SIZE);m++)  
+ 369   3            {
+ 370   4              if((BackUpRxBuf[m]=='+')&&(BackUpRxBuf[m+1]=='8')&&(BackUpRxBuf[m+2]=='6')) //china +86
+ 371   4              {
+ 372   5                memcpy(sMsgManage.tbPhoneBuff,&BackUpRxBuf[m+3],PHONE_SIZE);
+ 373   5              }
+ 374   4              
+ 375   4              if((BackUpRxBuf[m]==0x0d)&&(BackUpRxBuf[m+1]==0x0a))
+ 376   4              {
+ 377   5                bPositionCnt++;
+ 378   5                  if(bPositionCnt == 2)
+ 379   5                {
+ 380   6                    memcpy(sMsgManage.tbCommand,&BackUpRxBuf[m+2],MSGCMD_SEZE);
+ 381   6                  sMsgManage.tbCommand[MSGCMD_SEZE-1] = '\0';
+ 382   6                  return RECIEV_MSG;
+ 383   6                }
+ 384   5              }
+ 385   4            }
+ 386   3          }
+ 387   2          
+ 388   2          return READ_FAIL;
+ 389   2        }
+ 390   1        
+ 391   1        return NO_MSG;
+ 392   1      }
+ 393          void GPSDtInit()
+ 394          {
+ 395   1        sGPSData.sLatitude.bMark[0] = '0';
+ 396   1        sGPSData.sLatitude.bMark[1] = ':';
+ 397   1        memset(sGPSData.sLatitude.bGrade,'0',3);
+ 398   1        sGPSData.sLatitude.bGrade[2] = '.';
+ 399   1        memset(sGPSData.sLatitude.dwMinute,'0',6);
+ 400   1        sGPSData.sLatitude.tbEnter = '\n';
+ 401   1      
+ 402   1        sGPSData.sLongitude.bMark[0] = '0';
+ 403   1        sGPSData.sLongitude.bMark[1] = ':'; 
+ 404   1        memset(sGPSData.sLongitude.bGrade,'0',4);
+ 405   1        sGPSData.sLongitude.bGrade[3] = '.';
+ 406   1        memset(sGPSData.sLongitude.dwMinute,'0',6);
+ 407   1        sGPSData.sLongitude.tbEnter = '\n';
+ 408   1      
+ 409   1        sGPSData.sAtitude.bMark[0] = 'H';
+ 410   1        sGPSData.sAtitude.bMark[1] = ':'; 
+ 411   1        memset(sGPSData.sAtitude.tbAtitu,'0',GPS_ATITU_LEN);
+ 412   1        sGPSData.sAtitude.tbEnter = '\n';
+ 413   1        
+ 414   1        sGPSData.sFixStat.bMark[0] = 'S';
+ 415   1        sGPSData.sFixStat.bMark[1] = ':'; 
+ 416   1        sGPSData.sFixStat.bFixStatus = '0';
+ 417   1        sGPSData.sFixStat.tbEnter = '\n';
+ 418   1      
+ 419   1        sGPSData.sPrecision.bMark[0] = 'P';
+ 420   1        sGPSData.sPrecision.bMark[1] = ':'; 
+ 421   1        memset(sGPSData.sPrecision.tbPrecision,'0',GPS_PRECI_LEN);
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 8   
+
+ 422   1        sGPSData.sPrecision.tbEnter = '\n';
+ 423   1      
+ 424   1        sGPSData.sTemperSta.bMark[0] = 'T';
+ 425   1        sGPSData.sTemperSta.bMark[1] = ':'; 
+ 426   1        memset(sGPSData.sTemperSta.tbTemper,'0',TEMPER_LEN);
+ 427   1        sGPSData.sTemperSta.tbEnter = '\n';
+ 428   1        
+ 429   1        sGPSData.sBalloonSta.bMark[0] = 'B';
+ 430   1        sGPSData.sBalloonSta.bMark[1] = ':';
+ 431   1        memset(sGPSData.sBalloonSta.tbBloStat,'0',BALLOON_STA_LEN);
+ 432   1        //sGPSData.sBalloonSta.tbEnter = '\n';
+ 433   1        
+ 434   1        sGPSData.bEndChar = '\0';
+ 435   1        
+ 436   1          sGPSData.dwLatiMinut = 0;
+ 437   1        sGPSData.dwLontiMinut = 0;
+ 438   1        sGPSData.dwAtitude = 0;
+ 439   1        memset(sGPSData.tbDataBuf,0,GPS_BUF_LEN);
+ 440   1      
+ 441   1        memcpy(sGPSDtBackUp.sLatitude.bMark,sGPSData.sLatitude.bMark,12);
+ 442   1        memcpy(sGPSDtBackUp.sLongitude.bMark,sGPSData.sLongitude.bMark,13);
+ 443   1        memcpy(sGPSDtBackUp.sFixStat.bMark,sGPSData.sFixStat.bMark,4);
+ 444   1        memcpy(sGPSDtBackUp.sAtitude.bMark,sGPSData.sAtitude.bMark,10);
+ 445   1        memcpy(sGPSDtBackUp.sTemperSta.bMark,sGPSData.sTemperSta.bMark,7);
+ 446   1        memcpy(sGPSDtBackUp.sBalloonSta.bMark,sGPSData.sBalloonSta.bMark,6);
+ 447   1        sGPSDtBackUp.dwAtitude = sGPSData.dwAtitude;
+ 448   1        sGPSDtBackUp.bEndChar = sGPSData.bEndChar;
+ 449   1      
+ 450   1      }
+ 451          
+ 452          void GPSDtNumToChar(INT32U Data,INT8U *SavePosition)
+ 453          {
+ 454   1        SavePosition[0] = ASCIIConvert(Data/100000,NUM_TO_CHAR);
+ 455   1        Data = Data%100000;
+ 456   1      
+ 457   1        SavePosition[1] = ASCIIConvert(Data/10000,NUM_TO_CHAR);
+ 458   1        Data = Data%10000;
+ 459   1      
+ 460   1        SavePosition[2] = ASCIIConvert(Data/1000,NUM_TO_CHAR);
+ 461   1        Data = Data%1000;
+ 462   1      
+ 463   1        SavePosition[3] = ASCIIConvert(Data/100,NUM_TO_CHAR);
+ 464   1        Data = Data%100;
+ 465   1      
+ 466   1        SavePosition[4] = ASCIIConvert(Data/10,NUM_TO_CHAR);
+ 467   1        Data = Data%10;
+ 468   1        
+ 469   1        SavePosition[5] = ASCIIConvert(Data,NUM_TO_CHAR);
+ 470   1      }
+ 471          
+ 472          static INT8U GPSNumCharConv(INT8U symbol,INT8U Type)
+ 473          {
+ 474   1        if(Type == CHAR_TO_NUM)
+ 475   1        {
+ 476   2          if((symbol>=0x30)&&(symbol<=0x39))
+ 477   2          {
+ 478   3            return (symbol-0x30);
+ 479   3          }
+ 480   2          else if(Type == '-')
+ 481   2          {
+ 482   3            AtiSymbol = 1;
+ 483   3            return 0;
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 9   
+
+ 484   3          }
+ 485   2        }
+ 486   1        else if(Type == NUM_TO_CHAR)
+ 487   1        {
+ 488   2          if((symbol>=0)&&(symbol<=9))
+ 489   2          {
+ 490   3            return (symbol+0x30);
+ 491   3          }
+ 492   2        }
+ 493   1        
+ 494   1        return SPACE;
+ 495   1      }
+ 496          
+ 497          void GPSDtParse(INT8U Type,INT8U* Adrr,INT8U DtLen)
+ 498          {
+ 499   1        INT8U m;
+ 500   1      
+ 501   1        if((DtLen <= 0)||(DtLen>GPS_BUF_LEN))  //if DtLen>GPS_BUF_LEN,it will cause data cover problem
+ 502   1        {
+ 503   2          return;
+ 504   2        }
+ 505   1        
+ 506   1          memset(sGPSData.tbDataBuf,0,GPS_BUF_LEN);
+ 507   1        memcpy(sGPSData.tbDataBuf,Adrr,DtLen);
+ 508   1        
+ 509   1        switch(Type)
+ 510   1        {
+ 511   2          case LATITUDE:
+ 512   2          {
+ 513   3            sGPSData.dwLatiMinut = 0;
+ 514   3            for(m=0;m<DtLen;m++)
+ 515   3            {
+ 516   4              switch(m)
+ 517   4              {
+ 518   5                case 0:sGPSData.sLatitude.bGrade[m] = sGPSData.tbDataBuf[m];break;
+ 519   5                case 1:sGPSData.sLatitude.bGrade[m] = sGPSData.tbDataBuf[m];break;
+ 520   5                case 2:sGPSData.dwLatiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*100000;break;
+ 521   5                case 3:sGPSData.dwLatiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*10000;break;
+ 522   5                case 5:sGPSData.dwLatiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*1000;break;
+ 523   5                case 6:sGPSData.dwLatiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*100;break;
+ 524   5                case 7:sGPSData.dwLatiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*10;break;
+ 525   5                case 8:
+ 526   5                {
+ 527   6                  sGPSData.dwLatiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*1;
+ 528   6                  sGPSData.dwLatiMinut = sGPSData.dwLatiMinut*DATAx100/60;                    //1 degree = 60 minute
+ 529   6                  GPSDtNumToChar(sGPSData.dwLatiMinut,sGPSData.sLatitude.dwMinute);
+ 530   6                  break;
+ 531   6                }
+ 532   5              }
+ 533   4            }
+ 534   3            break;
+ 535   3          }
+ 536   2          case LATI_DIR:sGPSData.sLatitude.bMark[0] = sGPSData.tbDataBuf[0];break;
+ 537   2          case LONGTITU:
+ 538   2          {
+ 539   3            sGPSData.dwLontiMinut = 0;
+ 540   3            for(m=0;m<DtLen;m++)
+ 541   3            {
+ 542   4              switch(m)
+ 543   4              {
+ 544   5                case 0:sGPSData.sLongitude.bGrade[m] = sGPSData.tbDataBuf[m];break;
+ 545   5                case 1:sGPSData.sLongitude.bGrade[m] = sGPSData.tbDataBuf[m];break;
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 10  
+
+ 546   5                case 2:sGPSData.sLongitude.bGrade[m] = sGPSData.tbDataBuf[m];break;
+ 547   5                case 3:sGPSData.dwLontiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*100000;break;
+ 548   5                case 4:sGPSData.dwLontiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*10000;break;
+ 549   5                case 6:sGPSData.dwLontiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*1000;break;
+ 550   5                case 7:sGPSData.dwLontiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*100;break;
+ 551   5                case 8:sGPSData.dwLontiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*10;break;
+ 552   5                case 9:
+ 553   5                {
+ 554   6                  sGPSData.dwLontiMinut += ASCIIConvert(sGPSData.tbDataBuf[m],CHAR_TO_NUM)*1;
+ 555   6                  sGPSData.dwLontiMinut = sGPSData.dwLontiMinut*DATAx100/60;                  //1 degree = 60 minute
+ 556   6                  GPSDtNumToChar(sGPSData.dwLontiMinut,sGPSData.sLongitude.dwMinute);
+ 557   6                  break;
+ 558   6                }
+ 559   5              }
+ 560   4            }
+ 561   3            break;
+ 562   3          }
+ 563   2          case LONG_DIR:sGPSData.sLongitude.bMark[0] = sGPSData.tbDataBuf[0];break;
+ 564   2          case FIX_STAT:sGPSData.sFixStat.bFixStatus = sGPSData.tbDataBuf[0];break;
+ 565   2          case PRECISION:
+ 566   2          {
+ 567   3            if(DtLen<=GPS_PRECI_LEN)
+ 568   3            {
+ 569   4              memcpy(sGPSData.sPrecision.tbPrecision,sGPSData.tbDataBuf,DtLen);
+ 570   4            }
+ 571   3            else
+ 572   3            {
+ 573   4              memcpy(sGPSData.sPrecision.tbPrecision,sGPSData.tbDataBuf,GPS_PRECI_LEN);
+ 574   4            }
+ 575   3            break;
+ 576   3          }
+ 577   2          case ATITUDE:
+ 578   2          {
+ 579   3            memset(sGPSData.sAtitude.tbAtitu,'0',GPS_ATITU_LEN);
+ 580   3            
+ 581   3            if(DtLen>GPS_ATITU_LEN)
+ 582   3            {
+ 583   4              break;
+ 584   4            }
+ 585   3        
+ 586   3            sGPSData.dwAtitude = 0;
+ 587   3            
+ 588   3            for(m=0;m<DtLen;m++)
+ 589   3            {
+ 590   4                      sGPSData.sAtitude.tbAtitu[GPS_ATITU_LEN-m-1] = sGPSData.tbDataBuf[DtLen-m-1];
+ 591   4            }
+ 592   3            sGPSData.dwAtitude+= GPSNumCharConv(sGPSData.sAtitude.tbAtitu[0],CHAR_TO_NUM)*10000;
+ 593   3            sGPSData.dwAtitude+= GPSNumCharConv(sGPSData.sAtitude.tbAtitu[1],CHAR_TO_NUM)*1000;
+ 594   3                  sGPSData.dwAtitude+= GPSNumCharConv(sGPSData.sAtitude.tbAtitu[2],CHAR_TO_NUM)*100;
+ 595   3            sGPSData.dwAtitude+= GPSNumCharConv(sGPSData.sAtitude.tbAtitu[3],CHAR_TO_NUM)*10;
+ 596   3            sGPSData.dwAtitude+= GPSNumCharConv(sGPSData.sAtitude.tbAtitu[4],CHAR_TO_NUM);
+ 597   3            if(AtiSymbol == 1)
+ 598   3            {
+ 599   4              AtiSymbol = 0;
+ 600   4              sGPSData.dwAtitude = -sGPSData.dwAtitude;
+ 601   4            }
+ 602   3            
+ 603   3            break;
+ 604   3          }
+ 605   2        }
+ 606   1      }
+ 607          INT8U GetGPSData()
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 11  
+
+ 608          {
+ 609   1        INT8U i;
+ 610   1        INT8U *pStringAddr;
+ 611   1        INT8U *PStrAddrLast;
+ 612   1        INT8U bMarkCnt=0;
+ 613   1        INT8U bDataLen=0;
+ 614   1        static xdata INT32S AtitudTab[3];
+ 615   1        
+ 616   1        if(MC20SendCmd("AT+QGNSSRD=\"NMEA/GGA\"\r\n","OK\r\n",USUAL_WAIT) == SUCCESS)
+ 617   1        {
+ 618   2          if (strstr(BackUpRxBuf, ",") == NULL)
+ 619   2          {
+ 620   3            return FAIL;
+ 621   3          }
+ 622   2          else
+ 623   2          {
+ 624   3            pStringAddr = BackUpRxBuf;
+ 625   3            PStrAddrLast = pStringAddr;
+ 626   3            
+ 627   3            for(i=0;i<INTER_RX_MAX_SIZE;i++)
+ 628   3            {
+ 629   4              if(BackUpRxBuf[i] == ',')
+ 630   4              {
+ 631   5                PStrAddrLast = pStringAddr;
+ 632   5                pStringAddr = &BackUpRxBuf[i]+1;
+ 633   5                bDataLen = (INT8U)(pStringAddr-PStrAddrLast-1);
+ 634   5                
+ 635   5                bMarkCnt++;
+ 636   5                if(bMarkCnt>ATITUDE)
+ 637   5                {
+ 638   6                  break;
+ 639   6                }
+ 640   5                
+ 641   5                GPSDtParse(bMarkCnt,PStrAddrLast,bDataLen);
+ 642   5              }
+ 643   4            }
+ 644   3      
+ 645   3            if(sGPSData.sFixStat.bFixStatus == '0')    //if GPS data is invalid
+ 646   3            {
+ 647   4              return DT_INVALID;
+ 648   4              }
+ 649   3            else   
+ 650   3            {
+ 651   4              AtitudTab[0] = AtitudTab[1];
+ 652   4              AtitudTab[1] = AtitudTab[2];
+ 653   4              AtitudTab[2] = sGPSData.dwAtitude;
+ 654   4      
+ 655   4              if((AtitudTab[0]>=AtitudTab[1]) && (AtitudTab[0]>=AtitudTab[2]))
+ 656   4              {
+ 657   5                if(AtitudTab[1] > AtitudTab[2])
+ 658   5                {
+ 659   6                  sGPSData.dwAtitude = AtitudTab[1];  //select middle one
+ 660   6                }
+ 661   5                else
+ 662   5                {
+ 663   6                  sGPSData.dwAtitude = AtitudTab[2];
+ 664   6                }
+ 665   5              }
+ 666   4              else if((AtitudTab[1]>=AtitudTab[0]) && (AtitudTab[1]>=AtitudTab[2]))
+ 667   4              {
+ 668   5                if(AtitudTab[0] > AtitudTab[2])
+ 669   5                {
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 12  
+
+ 670   6                  sGPSData.dwAtitude = AtitudTab[0];  //select middle one
+ 671   6                }
+ 672   5                else
+ 673   5                {
+ 674   6                  sGPSData.dwAtitude = AtitudTab[2];
+ 675   6                }
+ 676   5              }
+ 677   4                  else if((AtitudTab[2]>=AtitudTab[0]) && (AtitudTab[2]>=AtitudTab[1]))
+ 678   4              {
+ 679   5                if(AtitudTab[0] > AtitudTab[1])
+ 680   5                {
+ 681   6                  sGPSData.dwAtitude = AtitudTab[0];  //select middle one
+ 682   6                }
+ 683   5                else
+ 684   5                {
+ 685   6                  sGPSData.dwAtitude = AtitudTab[1];
+ 686   6                }
+ 687   5              }
+ 688   4              
+ 689   4              return SUCCESS;
+ 690   4            }
+ 691   3          }
+ 692   2        }
+ 693   1        
+ 694   1        return FAIL;
+ 695   1      }
+ 696          
+ 697          void MC20Init()
+ 698          {
+ 699   1        if(FaultChk(MC20_FAITAL_FAULT) == NO_FAULT)  //if GSM is started ok
+ 700   1        {
+ 701   2          MC20InitBaud();
+ 702   2          
+ 703   2          BasicInfoChk();
+ 704   2      
+ 705   2          GPSDtInit();
+ 706   2          
+ 707   2          MC20StartGNSS();
+ 708   2          
+ 709   2          MC20InitMessage();
+ 710   2      
+ 711   2          //ChkIfMsgIsFull();
+ 712   2        }
+ 713   1      }
+ 714            
+ 715          INT8U* GetPhoneInfo(INT8U *PhoneNum)
+ 716          {
+ 717   1        INT8U i;
+ 718   1        
+ 719   1        for(i=0;i<PHONE_SIZE;i++)
+ 720   1        {
+ 721   2          tbMsgPhone[i+9] = PhoneNum[i];
+ 722   2        }
+ 723   1        
+ 724   1        return tbMsgPhone;
+ 725   1      }
+ 726          
+ 727          void MsgCmdSparse()
+ 728          {
+ 729   1        INT8U bTemp=0;
+ 730   1        INT16U MotorTimTemp=0;
+ 731   1      
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 13  
+
+ 732   1        if(strstr(sMsgManage.tbCommand,&CmdTable[0]) != NULL)
+ 733   1        {
+ 734   2          bTemp = GetGPSData();
+ 735   2          if(bTemp == SUCCESS)
+ 736   2          {
+ 737   3            sMsgManage.pMsgContent = sGPSData.sLatitude.bMark;
+ 738   3          }
+ 739   2          else if(bTemp == DT_INVALID)
+ 740   2          {
+ 741   3            sMsgManage.pMsgContent = &SendTable[1];  //
+ 742   3          }
+ 743   2          else
+ 744   2          {
+ 745   3            sMsgManage.pMsgContent = &SendTable[2];
+ 746   3          }
+ 747   2        }
+ 748   1        else if(strstr(sMsgManage.tbCommand,&CmdTable[1]) != NULL)  //get backup gps data
+ 749   1        {
+ 750   2          sMsgManage.pMsgContent = sGPSDtBackUp.sLatitude.bMark;
+ 751   2        }
+ 752   1        else if(strstr(sMsgManage.tbCommand,&CmdTable[2]) != NULL)  //start motor
+ 753   1        {
+ 754   2          if(sMsgManage.tbCommand[5] == ' ')
+ 755   2          {
+ 756   3            if(((ASCIIConvert(sMsgManage.tbCommand[9],CHAR_TO_NUM)) != SPACE) && ((ASCIIConvert(sMsgManage.tbComman
+             -d[8],CHAR_TO_NUM)) != SPACE)) //if only [9] is num,maybe it is wrong condition,so should check [8] and [9]
+ 757   3            {
+ 758   4              tbNumChk[0] = ASCIIConvert(sMsgManage.tbCommand[6],CHAR_TO_NUM);
+ 759   4              tbNumChk[1] = ASCIIConvert(sMsgManage.tbCommand[7],CHAR_TO_NUM);
+ 760   4              tbNumChk[2] = ASCIIConvert(sMsgManage.tbCommand[8],CHAR_TO_NUM);
+ 761   4              tbNumChk[3] = ASCIIConvert(sMsgManage.tbCommand[9],CHAR_TO_NUM);        
+ 762   4            }
+ 763   3            else if((ASCIIConvert(sMsgManage.tbCommand[8],CHAR_TO_NUM) != SPACE) && (ASCIIConvert(sMsgManage.tbComm
+             -and[7],CHAR_TO_NUM) != SPACE))
+ 764   3            {
+ 765   4              tbNumChk[0] = 0;
+ 766   4              tbNumChk[1] = ASCIIConvert(sMsgManage.tbCommand[6],CHAR_TO_NUM);
+ 767   4              tbNumChk[2] = ASCIIConvert(sMsgManage.tbCommand[7],CHAR_TO_NUM);
+ 768   4              tbNumChk[3] = ASCIIConvert(sMsgManage.tbCommand[8],CHAR_TO_NUM);
+ 769   4              
+ 770   4            }
+ 771   3            else if((ASCIIConvert(sMsgManage.tbCommand[7],CHAR_TO_NUM) != SPACE) && (ASCIIConvert(sMsgManage.tbComm
+             -and[6],CHAR_TO_NUM) != SPACE))
+ 772   3            {
+ 773   4              tbNumChk[0] = 0;
+ 774   4              tbNumChk[1] = 0;
+ 775   4              tbNumChk[2] = ASCIIConvert(sMsgManage.tbCommand[6],CHAR_TO_NUM);
+ 776   4              tbNumChk[3] = ASCIIConvert(sMsgManage.tbCommand[7],CHAR_TO_NUM);
+ 777   4            }
+ 778   3            else if(ASCIIConvert(sMsgManage.tbCommand[6],CHAR_TO_NUM) != SPACE)
+ 779   3            {
+ 780   4              tbNumChk[0] = 0;
+ 781   4              tbNumChk[1] = 0;
+ 782   4              tbNumChk[2] = 0;
+ 783   4              tbNumChk[3] = ASCIIConvert(sMsgManage.tbCommand[6],CHAR_TO_NUM);
+ 784   4            }
+ 785   3            else
+ 786   3            {
+ 787   4              tbNumChk[0] = 0;
+ 788   4              tbNumChk[1] = 0;
+ 789   4              tbNumChk[2] = 0;
+ 790   4              tbNumChk[3] = 0;
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 14  
+
+ 791   4            }
+ 792   3      
+ 793   3                  StartMotorTime = tbNumChk[0]*1000;
+ 794   3            StartMotorTime += tbNumChk[1]*100;
+ 795   3            StartMotorTime += tbNumChk[2]*10;
+ 796   3            StartMotorTime += tbNumChk[3];
+ 797   3      
+ 798   3            if(StartMotorTime<=600)
+ 799   3            {
+ 800   4              memcpy(tbSendMsgBuff,SendTable[3],MSG_BUFF_LEN);
+ 801   4              tbSendMsgBuff[9] = ' ';
+ 802   4              MotorTimTemp = StartMotorTime;
+ 803   4              tbSendMsgBuff[10] = ASCIIConvert((MotorTimTemp/100),NUM_TO_CHAR);
+ 804   4              MotorTimTemp = MotorTimTemp%100;
+ 805   4              tbSendMsgBuff[11] = ASCIIConvert((MotorTimTemp/10),NUM_TO_CHAR);
+ 806   4              MotorTimTemp = MotorTimTemp%10;
+ 807   4              tbSendMsgBuff[12] = ASCIIConvert(MotorTimTemp,NUM_TO_CHAR);
+ 808   4              tbSendMsgBuff[13] = 's';
+ 809   4              tbSendMsgBuff[14] = '\0';
+ 810   4      
+ 811   4              NeedStarMotor = 1;
+ 812   4              sMsgManage.pMsgContent = tbSendMsgBuff;
+ 813   4            }
+ 814   3            else
+ 815   3            {
+ 816   4              sMsgManage.pMsgContent = &SendTable[4];
+ 817   4              StartMotorTime = 0;
+ 818   4              NeedStarMotor = 0;
+ 819   4              GlabalTimeTemp = 0;
+ 820   4            }
+ 821   3          }
+ 822   2          else
+ 823   2          {
+ 824   3            sMsgManage.pMsgContent = &SendTable[4];
+ 825   3            StartMotorTime = 0;
+ 826   3            NeedStarMotor = 0;
+ 827   3            GlabalTimeTemp = 0;
+ 828   3          }
+ 829   2        }
+ 830   1        else
+ 831   1        {
+ 832   2          sMsgManage.pMsgContent = &SendTable[0];
+ 833   2        }
+ 834   1        
+ 835   1        sMsgManage.tbPhoneNum = sMsgManage.tbPhoneBuff;
+ 836   1        sMsgManage.DealStatus = NEED_SEND;
+ 837   1      }
+ 838          void BalloonStaChk()
+ 839          {
+ 840   1          static INT8U UpCnt=0;
+ 841   1        static INT8U DownCnt=0;
+ 842   1        static INT8U UpRecordCnt=0;
+ 843   1        static INT32S AtitudeOld=0;
+ 844   1      
+ 845   1        if(GetGPSData() == SUCCESS)
+ 846   1        {
+ 847   2          if(sGPSData.dwAtitude > (AtitudeOld + COMP_HIGH))
+ 848   2          {
+ 849   3            UpCnt++;
+ 850   3            if(UpCnt>=CNT_TIME)
+ 851   3            {
+ 852   4              UpCnt = CNT_TIME;
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 15  
+
+ 853   4              sGPSData.sBalloonSta.tbBloStat[0] = 'U';
+ 854   4              sGPSData.sBalloonSta.tbBloStat[1] = 'p';
+ 855   4              sGPSData.sBalloonSta.tbBloStat[2] = ' ';
+ 856   4              sGPSData.sBalloonSta.tbBloStat[3] = ' ';
+ 857   4              BalonStaRecor = STA_UP;
+ 858   4              
+ 859   4              if(UpRecordCnt<UP_CNT)  //this can indicate that balloon was ever in up condition 
+ 860   4              {
+ 861   5                UpRecordCnt++;
+ 862   5              }
+ 863   4              else
+ 864   4              {
+ 865   5                BalonAlreadyUp = 1;
+ 866   5              }
+ 867   4            }
+ 868   3            DownCnt = 0;
+ 869   3          }
+ 870   2          else if(AtitudeOld > (sGPSData.dwAtitude + COMP_HIGH))
+ 871   2          {
+ 872   3            DownCnt++;
+ 873   3            if(DownCnt>=CNT_TIME)
+ 874   3            {
+ 875   4              DownCnt = CNT_TIME;
+ 876   4              sGPSData.sBalloonSta.tbBloStat[0] = 'D';
+ 877   4              sGPSData.sBalloonSta.tbBloStat[1] = 'o';
+ 878   4              sGPSData.sBalloonSta.tbBloStat[2] = 'w';
+ 879   4              sGPSData.sBalloonSta.tbBloStat[3] = 'n';
+ 880   4              BalonStaRecor = STA_DOWN;
+ 881   4            }
+ 882   3            UpCnt = 0;
+ 883   3          }
+ 884   2          else 
+ 885   2          {
+ 886   3            sGPSData.sBalloonSta.tbBloStat[0] = 'P';
+ 887   3            sGPSData.sBalloonSta.tbBloStat[1] = 'a';
+ 888   3            sGPSData.sBalloonSta.tbBloStat[2] = 'r';
+ 889   3            sGPSData.sBalloonSta.tbBloStat[3] = 'a';
+ 890   3            BalonStaRecor = STA_PARA;
+ 891   3            UpCnt = 0;
+ 892   3            DownCnt = 0;
+ 893   3          }
+ 894   2      
+ 895   2          AtitudeOld = sGPSData.dwAtitude;
+ 896   2        }
+ 897   1        else 
+ 898   1        {
+ 899   2          sGPSData.sBalloonSta.tbBloStat[0] = '?';
+ 900   2          sGPSData.sBalloonSta.tbBloStat[1] = '?';
+ 901   2          sGPSData.sBalloonSta.tbBloStat[2] = '?';
+ 902   2          sGPSData.sBalloonSta.tbBloStat[3] = '?';
+ 903   2          BalonStaRecor = STA_UNKNOW;
+ 904   2          UpCnt = 0;
+ 905   2          DownCnt = 0;
+ 906   2          AtitudeOld = sGPSDtBackUp.dwAtitude;
+ 907   2        }
+ 908   1      }
+ 909          
+ 910          void BalonGoBackChk()
+ 911          {
+ 912   1        static INT8U MsgSendRecor=0;
+ 913   1        static INT8U StaticCnt=0;
+ 914   1        static INT8U BackChkCnt=0;
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 16  
+
+ 915   1        static bit Flag=0;
+ 916   1          
+ 917   1        if(BackChkCnt<20)  //4s
+ 918   1        {
+ 919   2          BackChkCnt++;
+ 920   2          return;
+ 921   2        }
+ 922   1        else
+ 923   1        {
+ 924   2          BackChkCnt = 0;
+ 925   2        }
+ 926   1        
+ 927   1        if((sGPSDtBackUp.dwAtitude<HIGH_LEVER_3)&&(sGPSDtBackUp.dwAtitude>(HIGH_LEVER_2+BACK_CMP_HIGH)))  //when 
+             -balloon is under HIGH_LEVER_3,send a msg
+ 928   1        {
+ 929   2          if((MsgSendRecor&UNDER_LEVER_3) != UNDER_LEVER_3)
+ 930   2          {
+ 931   3            MsgSendRecor |= UNDER_LEVER_3;
+ 932   3            
+ 933   3            MsgSendRecor &= ~UNDER_LEVER_1;
+ 934   3            MsgSendRecor &= ~UNDER_LEVER_2;
+ 935   3            MsgSendRecor &= ~UNDER_LEVER_4;
+ 936   3            MsgSendRecor |= SEND_MSG_FLAG;
+ 937   3          }
+ 938   2        }
+ 939   1          else if((sGPSDtBackUp.dwAtitude<HIGH_LEVER_2)&&(sGPSDtBackUp.dwAtitude>(HIGH_LEVER_1+BACK_CMP_HIGH))) 
+             - //when balloon is under HIGH_LEVER_2,send a msg
+ 940   1        {
+ 941   2          if((MsgSendRecor&UNDER_LEVER_2) != UNDER_LEVER_2)
+ 942   2          {
+ 943   3            MsgSendRecor |= UNDER_LEVER_2;
+ 944   3      
+ 945   3            MsgSendRecor &= ~UNDER_LEVER_1;
+ 946   3            MsgSendRecor &= ~UNDER_LEVER_3;
+ 947   3            MsgSendRecor &= ~UNDER_LEVER_4;
+ 948   3            MsgSendRecor |= SEND_MSG_FLAG;
+ 949   3          }
+ 950   2        }
+ 951   1        else if(sGPSDtBackUp.dwAtitude<HIGH_LEVER_1)  //when balloon is under HIGH_LEVER_1,send a msg
+ 952   1        {
+ 953   2          if((MsgSendRecor&UNDER_LEVER_1) != UNDER_LEVER_1)
+ 954   2          {
+ 955   3            MsgSendRecor |= UNDER_LEVER_1;
+ 956   3      
+ 957   3            MsgSendRecor &= ~UNDER_LEVER_2;
+ 958   3            MsgSendRecor &= ~UNDER_LEVER_3;
+ 959   3            MsgSendRecor &= ~UNDER_LEVER_4;
+ 960   3            MsgSendRecor |= SEND_MSG_FLAG;
+ 961   3          }
+ 962   2        }
+ 963   1        else if((sGPSDtBackUp.dwAtitude<HIGH_LEVER_5) && (BalonAlreadyUp == 1) && (BalonStaRecor != STA_UP))
+ 964   1        {
+ 965   2          if(Flag == 0)
+ 966   2          {
+ 967   3            Flag = 1;
+ 968   3            MsgSendRecor |= SEND_MSG_FLAG;
+ 969   3          }
+ 970   2        }
+ 971   1      
+ 972   1        if((sGPSDtBackUp.dwAtitude<HIGH_LEVER_4) && (BalonStaRecor == STA_PARA) && ((MsgSendRecor&UNDER_LEVER_4) 
+             -!= UNDER_LEVER_4) && (BalonAlreadyUp == 1))  // if balloon is under HIGH_LEVER_4 and stay parallel for 2min,consider it 
+             -is arived ground,then,should send a msg
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 17  
+
+ 973   1        {
+ 974   2          StaticCnt++;
+ 975   2          if(StaticCnt>225)    //900s
+ 976   2          {
+ 977   3            StaticCnt = 0;
+ 978   3            MsgSendRecor |= UNDER_LEVER_4;
+ 979   3            MsgSendRecor |= SEND_MSG_FLAG;
+ 980   3          }
+ 981   2        }
+ 982   1        else
+ 983   1        {
+ 984   2          StaticCnt = 0;
+ 985   2        }
+ 986   1      
+ 987   1        if(sGPSDtBackUp.dwAtitude>(HIGH_LEVER_4+BACK_CMP_HIGH))
+ 988   1          {
+ 989   2          MsgSendRecor = 0;
+ 990   2        }
+ 991   1        
+ 992   1        if((MsgSendRecor&SEND_MSG_FLAG) == SEND_MSG_FLAG)
+ 993   1          {
+ 994   2          MsgSendRecor &= ~SEND_MSG_FLAG;
+ 995   2          
+ 996   2          if(BalonStaRecor != STA_UP)
+ 997   2          {
+ 998   3            if((BalonStaRecor == STA_DOWN)||(BalonStaRecor == STA_PARA))  //when power on,MC20 need time to locate,
+             -so,the first state will be STA_UNKNOW
+ 999   3            {
+1000   4              sMsgManage.pMsgContent = sGPSData.sLatitude.bMark;
+1001   4              sMsgManage.tbPhoneNum = sDeviceInfoEE.tbPhoneNum;
+1002   4              sMsgManage.DealStatus = NEED_SEND;
+1003   4            }
+1004   3            else if((BalonStaRecor == STA_UNKNOW) && (BalonAlreadyUp == 1)) //when GPS without signal,UpRecordCnt c
+             -an prevent send message when power on
+1005   3            {
+1006   4              sMsgManage.pMsgContent = sGPSDtBackUp.sLatitude.bMark;
+1007   4              sMsgManage.tbPhoneNum = sDeviceInfoEE.tbPhoneNum;
+1008   4              sMsgManage.DealStatus = NEED_SEND;
+1009   4            }
+1010   3          }
+1011   2        }
+1012   1      }
+1013          void MC20PowerCtr(INT8U Cmd)
+1014          {
+1015   1        if(Cmd == START)
+1016   1        {
+1017   2          Set_IO(MC_PW_CONTR_PORT,MC_PW_CONTR_PIN);
+1018   2        }
+1019   1        else if(Cmd == SHUT_DOWN)
+1020   1        {
+1021   2          Reset_IO(MC_PW_CONTR_PORT,MC_PW_CONTR_PIN);
+1022   2          }
+1023   1      }
+1024          void MC20Task(INT8U TaskNum)
+1025          {
+1026   1        static INT8U CycleCnt=0;
+1027   1        
+1028   1        TaskStaChk(TaskNum);
+1029   1      
+1030   1        if(ReadMessage()==RECIEV_MSG)
+1031   1        {
+1032   2          MsgCmdSparse();
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 18  
+
+1033   2        }
+1034   1        else
+1035   1        {
+1036   2              CycleCnt++;
+1037   2      
+1038   2              if(CycleCnt>=LOCAT_CNT)
+1039   2          {
+1040   3            CycleCnt = 0;
+1041   3            BalloonStaChk();
+1042   3          }
+1043   2          else if((CycleCnt%GET_DT_TIME) == 0)
+1044   2          {
+1045   3            if(GetGPSData() != SUCCESS)
+1046   3            {
+1047   4              CycleCnt = 0;
+1048   4              sGPSData.sBalloonSta.tbBloStat[0] = '?';
+1049   4              sGPSData.sBalloonSta.tbBloStat[1] = '?';
+1050   4              sGPSData.sBalloonSta.tbBloStat[2] = '?';
+1051   4              sGPSData.sBalloonSta.tbBloStat[3] = '?';
+1052   4              BalonStaRecor = STA_UNKNOW;
+1053   4            }
+1054   3            else 
+1055   3            {
+1056   4              if(CycleCnt > CONTINOUS_TIME)  //if get data successfull continuously for 5 times
+1057   4              {
+1058   5                memcpy(sGPSDtBackUp.sLatitude.bMark,sGPSData.sLatitude.bMark,12);  //if data is valid for 5 times,it 
+             -indicate that data is credible,so,back up 
+1059   5                memcpy(sGPSDtBackUp.sLongitude.bMark,sGPSData.sLongitude.bMark,13);
+1060   5                memcpy(sGPSDtBackUp.sFixStat.bMark,sGPSData.sFixStat.bMark,4);
+1061   5                memcpy(sGPSDtBackUp.sAtitude.bMark,sGPSData.sAtitude.bMark,10);
+1062   5                memcpy(sGPSDtBackUp.sBalloonSta.bMark,sGPSData.sBalloonSta.bMark,6);
+1063   5                sGPSDtBackUp.dwAtitude = sGPSData.dwAtitude;
+1064   5              }
+1065   4            }
+1066   3          }
+1067   2      
+1068   2           BalonGoBackChk();  //every 4s
+1069   2        }
+1070   1          
+1071   1        if(sMsgManage.DealStatus == NEED_SEND)  
+1072   1          {
+1073   2          SendMessage(sMsgManage.pMsgContent,GetPhoneInfo(sMsgManage.tbPhoneNum));
+1074   2          sMsgManage.DealStatus = SEND_FINISH;
+1075   2        }
+1076   1        
+1077   1        ChkIfMsgIsFull(); //30s
+1078   1        
+1079   1        TaskPend(TaskNum);
+1080   1      }
+1081          
+1082          
+1083          
+1084          
+1085          
+1086          
+1087          
+1088          
+1089          
+1090          
+1091          
+1092          
+
+C51 COMPILER V9.51   MC20                                                                  06/07/2018 15:04:26 PAGE 19  
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   6324    ----
+   CONSTANT SIZE    =    370    ----
+   XDATA SIZE       =    257    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     15      54
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

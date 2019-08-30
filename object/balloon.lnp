@@ -1,0 +1,13 @@
+"..\object\STARTUP.obj",
+"..\object\main.obj",
+"..\object\IO.obj",
+"..\object\Timer.obj",
+"..\object\Global.obj",
+"..\object\UserTask.obj",
+"..\object\EEProm.obj",
+"..\object\ISR.obj",
+"..\object\CommuTask.obj",
+"..\object\MC20.obj",
+"..\object\DS18B20.obj" 
+TO "..\object\balloon" 
+PRINT(".\balloon.m51") RAMSIZE(256) 

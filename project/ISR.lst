@@ -1,0 +1,252 @@
+C51 COMPILER V9.51   ISR                                                                   06/07/2018 15:04:25 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE ISR
+OBJECT MODULE PLACED IN ..\object\ISR.obj
+COMPILER INVOKED BY: E:\StudySoftWareInstall\keil4\C51\BIN\C51.EXE ..\user_files\ISR.c BROWSE INCDIR(..\user_files) DEBU
+                    -G OBJECTEXTEND PRINT(.\ISR.lst) TABS(2) OBJECT(..\object\ISR.obj)
+
+line level    source
+
+   1          #include"Stc12c5a.h"
+   2          #include"Global.h"
+   3          #include"Timer.h"
+   4          #include"CommuTask.h"
+   5          
+   6          
+   7          static bit TickCntStart=0;
+   8          static INT16U bTickCnt=0;
+   9          static INT8U b1sCnt=0;
+  10          
+  11          void delayN_Tick(INT16U bTickNum)
+  12          {
+  13   1        bTickCnt = bTickNum;
+  14   1        TickCntStart = 1;
+  15   1        while(TickCntStart==1);
+  16   1      }
+  17          
+  18          //*************************************************************************
+  19          //******************************  Timer  **********************************
+  20          
+  21          void Timer0ISR() interrupt TIMER0_VEC   //5ms
+  22          {
+  23   1        TaskManage *Temp;
+  24   1        INT8U taskNum;
+  25   1        
+  26   1        SetTimerCnt(TIMER_0,T0_CNT);
+  27   1        
+  28   1        for(taskNum=0;taskNum<MAX_TASK_NUM;taskNum++)
+  29   1        {
+  30   2          Temp = &TaskManaTble[taskNum];
+  31   2          if(Temp->TaskStatus == TASK_WAIT)
+  32   2          {
+  33   3            Temp->TimeCnt--;
+  34   3            if(Temp->TimeCnt == 0)
+  35   3            {
+  36   4              Temp->TaskStatus = TASK_READY;
+  37   4              Temp->TimeCnt = Temp->Period;
+  38   4            }
+  39   3          }
+  40   2        }
+  41   1        
+  42   1        if(TickCntStart == 1)
+  43   1        {
+  44   2          if(bTickCnt>0)
+  45   2          {
+  46   3            bTickCnt--;
+  47   3          }
+  48   2          else
+  49   2          {
+  50   3            TickCntStart = 0;
+  51   3          }
+  52   2        }
+  53   1      
+  54   1        if(sInterRx.bRxStatus == RX_READY)
+C51 COMPILER V9.51   ISR                                                                   06/07/2018 15:04:25 PAGE 2   
+
+  55   1        {
+  56   2          sInterRx.bRxTimeCnt++;
+  57   2          if(sInterRx.bRxTimeCnt>RX_FINISH_TIME)
+  58   2          {
+  59   3            sInterRx.bRxStatus = RX_FINISH;
+  60   3            sInterRx.bRxCnt = 0;
+  61   3            sInterRx.bRxTimeCnt = 0;
+  62   3          }
+  63   2        }
+  64   1      }
+  65          
+  66          void Timer1ISR() interrupt TIMER1_VEC using 1 //50ms
+  67          {
+  68   1        SetTimerCnt(TIMER_1,T1_CNT);
+  69   1        b1sCnt++;
+  70   1        if(b1sCnt>=20)
+  71   1        {
+  72   2          b1sCnt = 0;
+  73   2          GlabalTimeCnt++;
+  74   2        }
+  75   1      }                                 
+  76          
+  77          //********************************************************************************
+  78          //*********************************  Uart  ***************************************
+  79          #if 1
+  80          void InterComISR() interrupt UART2_VEC
+  81          {
+  82   1        INT8U bTemp;
+  83   1        
+  84   1        if(UartReadFlg(UART_2,UART_RI_FLG) == SET)
+  85   1        {
+  86   2          UartClearFlg(UART_2,UART_RI_FLG);
+  87   2      
+  88   2          if(sInterRx.bRxCnt < sInterRx.bRxSize)
+  89   2          {
+  90   3            *(sInterRx.pRxBuffer+sInterRx.bRxCnt) = S2BUF;
+  91   3            sInterRx.bRxCnt++;
+  92   3          }
+  93   2          else
+  94   2          {
+  95   3            bTemp = S2BUF;
+  96   3          }
+  97   2          sInterRx.bRxTimeCnt = 0;
+  98   2          sInterRx.bRxStatus = RX_READY;
+  99   2        }
+ 100   1      
+ 101   1        if(UartReadFlg(UART_2,UART_TI_FLG) == SET)
+ 102   1        {
+ 103   2          UartClearFlg(UART_2,UART_TI_FLG);
+ 104   2          
+ 105   2          if(sInterTx.bTxCnt<sInterTx.bSendLength)
+ 106   2          {
+ 107   3            S2BUF = *(sInterTx.pSendBuff+sInterTx.bTxCnt);  
+ 108   3            sInterTx.bTxCnt++;
+ 109   3          }
+ 110   2          else
+ 111   2          {
+ 112   3            sInterTx.bSendStatus = TX_READY;
+ 113   3          }
+ 114   2        }
+ 115   1      }
+ 116          #endif
+C51 COMPILER V9.51   ISR                                                                   06/07/2018 15:04:25 PAGE 3   
+
+ 117          
+ 118          #if 0
+              void InterComISR() interrupt UART1_VEC
+              {
+                INT8U bTemp;
+                if(UartReadFlg(UART_1,UART_RI_FLG) == SET)
+                {
+                  UartClearFlg(UART_1,UART_RI_FLG);
+                  
+                  if(sInterRx.bRxCnt < sInterRx.bRxSize)
+                  {
+                    *(sInterRx.pRxBuffer+sInterRx.bRxCnt) = SBUF;
+                    sInterRx.bRxCnt++;
+                    sInterRx.bRxLength++;
+                  }
+                  else
+                  {
+                    bTemp = SBUF;
+                  }
+                  sInterRx.bRxStatus = RX_READY;
+                }
+              
+                if(UartReadFlg(UART_1,UART_TI_FLG) == SET)
+                {
+                  UartClearFlg(UART_1,UART_TI_FLG);
+                  
+                  if(sInterTx.bTxCnt<sInterTx.bSendLength)
+                  {
+                    SBUF = *(sInterTx.pSendBuff+sInterTx.bTxCnt);  
+                    sInterTx.bTxCnt++;
+                  }
+                  else
+                  {
+                    sInterTx.bSendStatus = TX_READY;
+                  }
+                }
+              }
+              #endif
+ 155          
+ 156          void ExterComISR() interrupt UART1_VEC
+ 157          {
+ 158   1        INT8U bTemp;
+ 159   1        
+ 160   1        if(UartReadFlg(UART_1,UART_RI_FLG) == SET)
+ 161   1        {
+ 162   2          UartClearFlg(UART_1,UART_RI_FLG);
+ 163   2            if(sExterRx.bRxCnt < sExterRx.bRxSize)
+ 164   2          {
+ 165   3            *(sExterRx.pRxBuffer+sExterRx.bRxCnt) = SBUF;
+ 166   3            sExterRx.bRxCnt++;
+ 167   3            sExterRx.bRxLength++;
+ 168   3          }
+ 169   2          else
+ 170   2          {
+ 171   3            bTemp = SBUF;
+ 172   3          }
+ 173   2          sExterRx.bRxStatus = RX_READY;
+ 174   2        }
+ 175   1      
+ 176   1        if(UartReadFlg(UART_1,UART_TI_FLG) == SET)
+ 177   1        {
+ 178   2          UartClearFlg(UART_1,UART_TI_FLG);
+C51 COMPILER V9.51   ISR                                                                   06/07/2018 15:04:25 PAGE 4   
+
+ 179   2          
+ 180   2          if(sExterTx.bTxCnt<sExterTx.bSendLength)
+ 181   2          {
+ 182   3            SBUF = *(sExterTx.pSendBuff+sExterTx.bTxCnt);  //start first send
+ 183   3            sExterTx.bTxCnt++;
+ 184   3          }
+ 185   2          else
+ 186   2          {
+ 187   3            sExterTx.bSendStatus = TX_READY;
+ 188   3          }
+ 189   2        }
+ 190   1      }
+ 191          
+ 192          
+ 193          
+ 194          
+ 195          
+ 196          
+ 197          
+ 198          
+ 199          
+ 200          
+ 201          
+ 202          
+ 203          
+ 204          
+ 205          
+ 206          
+ 207          
+ 208          
+ 209          
+ 210          
+ 211          
+ 212          
+ 213          
+ 214          
+ 215          
+ 216          
+ 217          
+ 218          
+ 219          
+ 220          
+ 221          
+ 222          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    617    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      3       3
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

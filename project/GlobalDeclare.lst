@@ -1,0 +1,60 @@
+C51 COMPILER V9.51   GLOBALDECLARE                                                         04/25/2018 21:53:02 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE GLOBALDECLARE
+OBJECT MODULE PLACED IN ..\object\GlobalDeclare.obj
+COMPILER INVOKED BY: E:\StudySoftWareInstall\keil4\C51\BIN\C51.EXE ..\user_files\GlobalDeclare.c BROWSE INCDIR(..\user_f
+                    -iles) DEBUG OBJECTEXTEND PRINT(.\GlobalDeclare.lst) TABS(2) OBJECT(..\object\GlobalDeclare.obj)
+
+line level    source
+
+   1          #include"Stc12c5a.h"
+   2          #include"GlobalDeclare.h"
+   3          #include"Timer.h"
+   4          
+   5          #if 0
+              void InterruptInit()
+              {
+                EnInterrupt(EA_I|TIMER1_I|TIMER0_I,Enable);
+                EnInterrupt(TIMER1_I,Disable);
+                TimerStart(TIMER_1,Enable);
+                TimerStart(TIMER_0,Enable);
+                UartInit();
+                EnInterrupt(EA_I|TIMER1_I|TIMER0_I,Enable);
+              }
+              
+              #endif
+  17          
+  18          
+  19          
+  20          
+  21          
+  22          
+  23          
+  24          
+  25          
+  26          
+  27          
+  28          
+  29          
+  30          
+  31          
+  32          
+  33          
+  34          
+  35          
+  36          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

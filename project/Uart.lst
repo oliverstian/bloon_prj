@@ -1,0 +1,200 @@
+C51 COMPILER V9.51   UART                                                                  04/27/2018 11:08:59 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE UART
+OBJECT MODULE PLACED IN ..\object\Uart.obj
+COMPILER INVOKED BY: E:\StudySoftWareInstall\keil4\C51\BIN\C51.EXE ..\user_files\Uart.c BROWSE INCDIR(..\user_files) DEB
+                    -UG OBJECTEXTEND PRINT(.\Uart.lst) TABS(2) OBJECT(..\object\Uart.obj)
+
+line level    source
+
+   1          #include"Stc12c5a.h"
+   2          #include"Global.h"
+   3          #include"Uart.h"
+   4          
+   5          #define BAUD_9600   (256-((FOSC)/16/9600))
+   6          #define BAUD_115200 (256-((FOSC)/16/115200))
+   7          
+   8          INT8U Test_Uart;
+   9          INT8U Count=0;
+  10          
+  11          #if 0
+              typedef struct 
+              {
+                INT8U UartTxSta;
+                INT8U UartTxSta;
+                INT8U *RxBuffer;
+              }
+              sUartStatus;
+              
+              #endif
+  21          
+  22          void UartConfig(INT8U Uartx,INT8U Baud) //notice that UART1 & UART2 baud need to be set to the same(use co
+             -mmon baud degenerator),except some special ways
+  23          {
+  24   1        if((Uartx&UART_1) == UART_1)
+  25   1          {
+  26   2          PCON |= 0x80;  //PCON.bit7/SMOD=1; baud degenerator double
+  27   2          PCON &= 0xbf;  //PCON.bit6/SMOD0=0;
+  28   2          SM0 = 0;       //Mode 1,8 bit 
+  29   2          SM1 = 1;
+  30   2          BRT = Baud;
+  31   2              AUXR |= 0x04;  //AUXR.bit2/BRTx12=1;independent baud degenerator count every 1 sysclk cycle
+  32   2          AUXR |= 0x01;  //AUXR.bit4/BRTR =1; allow independent baud degenerator
+  33   2          AUXR |= 0x10;  //AUXR.bit0/S1BRS=1; activate independent baud degenerator,release T1;
+  34   2        }
+  35   1        
+  36   1        if((Uartx&UART_2) == UART_2)
+  37   1        {
+  38   2          S2CON &= 0x7f; //S2CON.bit7/S2SM0=0; Mode 1,8 bit,baud changeable
+  39   2          S2CON |= 0x40; //S2CON.bit6/S2SM1=1;
+  40   2          BRT = Baud;
+  41   2          AUXR |= 0x08;  //AUXR.bit3/S2SMOD=1; baud degenerator double
+  42   2          AUXR |= 0x04;  //AUXR.bit2/BRTx12=1; independent baud degenerator count every 1 sysclk cycle
+  43   2          AUXR1 &= 0xef; //AUXR1.bit4/S2_P4=0; URAT2 located in P1 Port
+  44   2          //AUXR1 |= 0x10; //AUXR1.bit4/S2_P4=0; URAT2 located in P4 Port
+  45   2        }
+  46   1      }
+  47          
+  48          void ContrUart_RX(INT8U Uartx,bit Contr)
+  49          {
+  50   1          if((Uartx&UART_1) == UART_1)
+  51   1          {
+  52   2          if(Contr == Enable)
+  53   2          {
+C51 COMPILER V9.51   UART                                                                  04/27/2018 11:08:59 PAGE 2   
+
+  54   3            REN = 1;
+  55   3          }
+  56   2          else if(Contr == Disable)
+  57   2          {
+  58   3            REN = 0;
+  59   3          }
+  60   2        }
+  61   1      
+  62   1        if((Uartx&UART_2) == UART_2)
+  63   1        {
+  64   2          if(Contr == Enable)
+  65   2          {
+  66   3            S2CON |= 0x10;  //bit4/S2REN
+  67   3          }
+  68   2          else if(Contr == Disable)
+  69   2          {
+  70   3            S2CON &= 0xef;  //bit4/S2REN
+  71   3          }
+  72   2        }
+  73   1      }
+  74          
+  75          #if 0
+              void StartUart_TX(bit Uartx,bit Contr)
+              {
+                
+              }
+              #endif
+  81          
+  82          bit UartReadFlg(INT8U Uartx,INT8U UartFlg)  //Read a flag one time
+  83          {
+  84   1        bit StatusTemp=RESET;
+  85   1        
+  86   1        if(Uartx == UART_1)
+  87   1        {
+  88   2          switch(UartFlg)
+  89   2          {
+  90   3            case UART_TI_FLG:StatusTemp = TI;break;
+  91   3            case UART_RI_FLG:StatusTemp = RI;break;
+  92   3          }
+  93   2        }
+  94   1        else if(Uartx == UART_2)
+  95   1        {
+  96   2          switch(UartFlg)
+  97   2          {
+  98   3            case UART_TI_FLG:StatusTemp = (bit)(S2CON&0x02);break;
+  99   3            case UART_RI_FLG:StatusTemp = (bit)(S2CON&0x01);break;
+ 100   3          }
+ 101   2        }
+ 102   1        
+ 103   1        return StatusTemp;
+ 104   1      }
+ 105          
+ 106          void UartClearFlg(INT8U Uartx,INT8U UartFlg)
+ 107          {
+ 108   1        if((Uartx&UART_1) == UART_1)
+ 109   1        {
+ 110   2          if((UartFlg&UART_TI_FLG) == UART_TI_FLG)
+ 111   2          {
+ 112   3            TI = 0;
+ 113   3          }
+ 114   2      
+ 115   2          if((UartFlg&UART_RI_FLG) == UART_RI_FLG)
+C51 COMPILER V9.51   UART                                                                  04/27/2018 11:08:59 PAGE 3   
+
+ 116   2          {
+ 117   3            RI = 0;
+ 118   3          }
+ 119   2        }
+ 120   1      
+ 121   1        if((Uartx&UART_2) == UART_2)
+ 122   1        {
+ 123   2          if((UartFlg&UART_TI_FLG) == UART_TI_FLG)
+ 124   2          {
+ 125   3            S2CON &= 0xfd;  //S2TI=0;
+ 126   3          }
+ 127   2      
+ 128   2          if((UartFlg&UART_RI_FLG) == UART_RI_FLG)
+ 129   2          {
+ 130   3            S2CON &= 0xfe;  //S2RI=0;
+ 131   3          }
+ 132   2        }
+ 133   1      }
+ 134          
+ 135          void UartInit()
+ 136          {
+ 137   1        UartConfig(UART_1|UART_2,BAUD_9600);
+ 138   1        ContrUart_RX(UART_1,Enable);
+ 139   1      }
+ 140          
+ 141          
+ 142          
+ 143          
+ 144          
+ 145          
+ 146          
+ 147          
+ 148          
+ 149          
+ 150          
+ 151          
+ 152          
+ 153          
+ 154          
+ 155          
+ 156          
+ 157          
+ 158          
+ 159          
+ 160          
+ 161          
+ 162          
+ 163          
+ 164          
+ 165          
+ 166          
+ 167          
+ 168          
+ 169          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    182    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      2    ----
+C51 COMPILER V9.51   UART                                                                  04/27/2018 11:08:59 PAGE 4   
+
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       2
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

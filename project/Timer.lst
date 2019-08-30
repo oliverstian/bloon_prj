@@ -1,0 +1,133 @@
+C51 COMPILER V9.51   TIMER                                                                 06/07/2018 15:04:24 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE TIMER
+OBJECT MODULE PLACED IN ..\object\Timer.obj
+COMPILER INVOKED BY: E:\StudySoftWareInstall\keil4\C51\BIN\C51.EXE ..\user_files\Timer.c BROWSE INCDIR(..\user_files) DE
+                    -BUG OBJECTEXTEND PRINT(.\Timer.lst) TABS(2) OBJECT(..\object\Timer.obj)
+
+line level    source
+
+   1          #include"Stc12c5a.h"
+   2          #include"Global.h"
+   3          #include"Timer.h"
+   4          
+   5          void SetTimerCnt(INT8U Tnum,INT16U Vlaue)
+   6          {
+   7   1        if(Tnum == TIMER_0)
+   8   1        {
+   9   2          TL0 = Vlaue;
+  10   2          TH0 = Vlaue >> 8;
+  11   2        }
+  12   1        else if(Tnum == TIMER_1)
+  13   1        {
+  14   2          TL1 = Vlaue;
+  15   2          TH1 = Vlaue >> 8;
+  16   2        }
+  17   1      }
+  18          
+  19          void TimerConfig(INT8U Tnum)
+  20          {
+  21   1        if((Tnum&TIMER_0) == TIMER_0)
+  22   1        {
+  23   2          TMOD &= 0xf1;  // timer0 mode 1,16bit timer
+  24   2          TMOD |= 0x01;
+  25   2          AUXR &= 0x7f;  //sysclk/12
+  26   2          SetTimerCnt(TIMER_0,T0_CNT);
+  27   2        }
+  28   1        if((Tnum&TIMER_1) == TIMER_1)
+  29   1        {
+  30   2          TMOD &= 0x1f;  // timer1 mode 1,16bit timer
+  31   2          TMOD |= 0x10;  
+  32   2            AUXR &= 0xbf;  // sysclk/12
+  33   2            SetTimerCnt(TIMER_1,T1_CNT);
+  34   2        }
+  35   1      }
+  36          
+  37          void TimerStart(INT8U Tnum,INT8U contr)
+  38          {
+  39   1        if((Tnum&TIMER_0) == TIMER_0)
+  40   1        {
+  41   2          if(contr == Enable)
+  42   2          {
+  43   3            TCON |= 0x10;
+  44   3          }
+  45   2          else if(contr == Disable)
+  46   2          {
+  47   3            TCON &= 0xef;
+  48   3          }
+  49   2        }
+  50   1        
+  51   1        if((Tnum&TIMER_1) == TIMER_1)
+  52   1        {
+  53   2          if(contr == Enable)
+  54   2          {
+C51 COMPILER V9.51   TIMER                                                                 06/07/2018 15:04:24 PAGE 2   
+
+  55   3            TCON |= 0x40;
+  56   3          }
+  57   2          else if(contr == Disable)
+  58   2          {
+  59   3            TCON &= 0xbf;
+  60   3          }
+  61   2        }
+  62   1      }
+  63          
+  64          void InitTimer()
+  65          {
+  66   1        TimerConfig(TIMER_0|TIMER_1);
+  67   1        TimerStart(TIMER_0|TIMER_1,Enable);
+  68   1        
+  69   1      }
+  70          
+  71          
+  72          
+  73          
+  74          
+  75          
+  76          
+  77          
+  78          
+  79          
+  80          
+  81          
+  82          
+  83          
+  84          
+  85          
+  86          
+  87          
+  88          
+  89          
+  90          
+  91          
+  92          
+  93          
+  94          
+  95          
+  96          
+  97          
+  98          
+  99          
+ 100          
+ 101          
+ 102          
+ 103          
+ 104          
+ 105          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    111    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+C51 COMPILER V9.51   TIMER                                                                 06/07/2018 15:04:24 PAGE 3   
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
